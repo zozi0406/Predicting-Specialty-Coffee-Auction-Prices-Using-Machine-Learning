@@ -1,0 +1,28 @@
+﻿level1,level2,matchphrase
+Floral,Black tea,black tea
+Fruity,Berry,berry;berries
+Fruity,Dried fruit,dried fruit
+Fruity,Other fruit,other fruit
+Fruity,Citrus fruit,citrus fruit;citrus
+Sour / fermented,Sour,sour;acid;acidic
+Sour / fermented,Alcohol / fermented,alcohol;fermented
+Green / vegetative,Olive oil,olive oil
+Green / vegetative,Raw,raw
+Green / vegetative,Green / vegetative,green;vegetative
+Green / vegetative,Beany,beany
+Other,Papery / musty,papery;musty
+Other,Chemical,chemical
+Roasted,Pipe tobacco,pipe tobacco
+Roasted,Tobacco,tobacco
+Roasted,Burnt,burnt
+Roasted,Cereal,cereal
+Spices,Pungent,pungent
+Spices,Pepper,pepper
+Spices,Brown spice,brown spice
+Nutty / cocoa,Nutty,nutty
+Nutty / cocoa,Cocoa,cocoa
+Sweet,Brown sugar,brown sugar;sugar
+Sweet,Vanilla,vanilla
+Sweet,Vanillin,vanillin
+Sweet,Overall sweet,overall sweet
+Sweet,Sweet aromatics,sweet aromatics

@@ -1,0 +1,74 @@
+﻿level1,level2,level3,matchphrase
+Floral,Floral,Chamomile,chamomile
+Floral,Floral,Rose,rose
+Floral,Floral,Jasmine,jasmine
+Fruity,Berry,Blackberry,blackberry
+Fruity,Berry,Raspberry,raspberry
+Fruity,Berry,Blueberry,blueberry
+Fruity,Berry,Strawberry,strawberry
+Fruity,Dried fruit,Raisin,raisin
+Fruity,Dried fruit,Prune,prune
+Fruity,Other fruit,Coconut,coconut
+Fruity,Other fruit,Cherry,cherry
+Fruity,Other fruit,Pomegranate,pomegranate
+Fruity,Other fruit,Pineapple,pineapple
+Fruity,Other fruit,Grape,grape;grapes
+Fruity,Other fruit,Apple,apple
+Fruity,Other fruit,Peach,peach
+Fruity,Other fruit,Pear,pear
+Fruity,Citrus fruit,Grapefruit,grapefruit
+Fruity,Citrus fruit,Orange,orange
+Fruity,Citrus fruit,Lemon,lemon
+Fruity,Citrus fruit,Lime,lime
+Sour / fermented,Sour,Sour aromatics,sour aromatics
+Sour / fermented,Sour,Acetic acid,acetic acid
+Sour / fermented,Sour,Butyric acid,butyric acid
+Sour / fermented,Sour,Iso-valeric acid,iso-valeric acid
+Sour / fermented,Sour,Citric acid,citric acid;citric
+Sour / fermented,Sour,Malic acid,malic acid;malic
+Sour / fermented,Alcohol / fermented,Winey,red wine;white wine;wine;winey
+Sour / fermented,Alcohol / fermented,Whiskey,whiskey
+Sour / fermented,Alcohol / fermented,Fermented,fermented
+Sour / fermented,Alcohol / fermented,Overripe,overripe
+Green / vegetative,Green / vegetative,Under-ripe,under-ripe
+Green / vegetative,Green / vegetative,Peapod,peapod
+Green / vegetative,Green / vegetative,Fresh,fresh
+Green / vegetative,Green / vegetative,Dark green,dark green
+Green / vegetative,Green / vegetative,Vegetative,vegetative
+Green / vegetative,Green / vegetative,Hay-like,hay-like
+Green / vegetative,Green / vegetative,Herb-like,herb-like
+Other,Papery / musty,Stale,stale
+Other,Papery / musty,Cardboard,cardboard
+Other,Papery / musty,Papery,papery
+Other,Papery / musty,Woody,woody
+Other,Papery / musty,Moldy / damp,moldy;damp
+Other,Papery / musty,Musty / dusty,musty;dusty
+Other,Papery / musty,Musty / earthy,musty;earthy
+Other,Papery / musty,Animalic,animalic
+Other,Papery / musty,Meaty brothy,meaty brothy
+Other,Papery / musty,Phenolic,phenolic
+Other,Chemical,Bitter,bitter
+Other,Chemical,Salty,salty
+Other,Chemical,Medicinal,medicinal
+Other,Chemical,Petroleum,petroleum
+Other,Chemical,Skunky,skunky
+Other,Chemical,Rubber,rubber
+Roasted,Burnt,Acrid,acrid
+Roasted,Burnt,Ashy,ashy
+Roasted,Burnt,Smoky,smoky
+Roasted,Burnt,"Brown, roast","brown, roast"
+Roasted,Cereal,Grain,grain
+Roasted,Cereal,Malt,malt
+Spices,Brown spice,Anise,anise
+Spices,Brown spice,Nutmeg,nutmeg
+Spices,Brown spice,Cinnamon,cinnamon
+Spices,Brown spice,Clove,clove
+Nutty / cocoa,Nutty,Peanuts,peanuts
+Nutty / cocoa,Nutty,Hazelnut,hazelnut
+Nutty / cocoa,Nutty,Almond,almond
+Nutty / cocoa,Cocoa,Chocolate,chocolate
+Nutty / cocoa,Cocoa,Dark chocolate,dark chocolate
+Sweet,Brown sugar,Molasses,molasses
+Sweet,Brown sugar,Maple syrup,maple syrup
+Sweet,Brown sugar,Caramelized,caramelized;caramel
+Sweet,Brown sugar,Honey,honey

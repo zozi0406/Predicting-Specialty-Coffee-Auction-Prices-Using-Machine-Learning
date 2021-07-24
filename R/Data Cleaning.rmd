@@ -1,0 +1,445 @@
+---
+title: "Data Cleaning"
+author: "Zoltan Aldott"
+date: "24/10/2020"
+output: html_document
+---
+
+```{r setup}
+knitr::opts_chunk$set(eval = FALSE,echo = TRUE)
+library(tidyverse)
+library(naniar)
+library(ggplot2)
+library(visdat)
+library(corrplot)
+library(viridis)
+
+```
+
+```{r helpers}
+clean_names <- function(.data, unique = FALSE) {
+  n <- if (is.data.frame(.data)) colnames(.data) else .data
+  n <- gsub("%+", "_pct_", n)
+  n <- gsub("\\$+", "_dollars_", n)
+  n <- gsub("\\++", "_plus_", n)
+  n <- gsub("-+", "_minus_", n)
+  n <- gsub("\\*+", "_star_", n)
+  n <- gsub("#+", "_cnt_", n)
+  n <- gsub("&+", "_and_", n)
+  n <- gsub("@+", "_at_", n)
+  n <- gsub("[^a-zA-Z0-9_]+", "_", n)
+  n <- gsub("([A-Z][a-z])", "_\\1", n)
+  n <- tolower(trimws(n))
+  
+  n <- gsub("(^_+|_+$)", "", n)
+  
+  n <- gsub("_+", "_", n)
+  
+  if (unique) n <- make.unique(n, sep = "_")
+  
+  if (is.data.frame(.data)) {
+    colnames(.data) <- n
+    .data
+  } else {
+    n
+  }
+}
+
+
+coalesce_join <- function(x, y, 
+                          by = NULL, suffix = c(".x", ".y"), 
+                          join = dplyr::full_join, ...) {
+    joined <- join(x, y, by = by, suffix = suffix, ...)
+    # names of desired output
+    cols <- union(names(x), names(y))
+    
+    to_coalesce <- names(joined)[!names(joined) %in% cols]
+    suffix_used <- suffix[ifelse(endsWith(to_coalesce, suffix[1]), 1, 2)]
+    # remove suffixes and deduplicate
+    to_coalesce <- unique(substr(
+        to_coalesce, 
+        1, 
+        nchar(to_coalesce) - nchar(suffix_used)
+    ))
+    
+    coalesced <- purrr::map_dfc(to_coalesce, ~dplyr::coalesce(
+        joined[[paste0(.x, suffix[1])]], 
+        joined[[paste0(.x, suffix[2])]]
+    ))
+    names(coalesced) <- to_coalesce
+    
+    dplyr::bind_cols(joined, coalesced)[cols]
+}
+
+sufdf<-function(df, suffix="", sep="") { 
+  colnames(df) <- paste(colnames(df), suffix, sep=sep) 
+  return(df) }
+
+```
+
+```{r prep_onlinedata}
+load("onlinedata.Rdata")
+cleaningset <- data
+
+
+cleaningset <- cleaningset %>% 
+  select(-c(X2,`Business Phone Number`,`Business Address`,`Business Website Address`,Auction,Month)) %>% 
+  distinct() %>% 
+  # mutate(`Auction Lot Size (lbs.)`=replace(`Auction Lot Size (lbs.)`,is.na(`Auction Lot Size (lbs.)`), as.numeric(`Auction Lot Size (kg)`)*2.205)) %>% 
+  # mutate(`Auction Lot Size (lbs.)`=replace(`Auction Lot Size (lbs.)`,is.na(`Auction Lot Size (lbs.)`), as.numeric(`Kilos`)*2.205)) %>% 
+  # select(-c(`Auction Lot Size (kg)`,Kilos)) %>% 
+  type_convert()
+
+cleaningset$`Auction Lot Size (lbs.)`<-as.numeric(cleaningset$`Auction Lot Size (lbs.)`)
+cleaningset$`Size (30kg boxes)` <- as.numeric(cleaningset$`Size (30kg boxes)`)
+cleaningset$`Year` <- as.numeric(cleaningset$`Year`)
+
+# corre<-cor(cleaningset %>% select(is.numeric), use="pairwise.complete.obs")
+
+
+# summary(cleaningset)
+# cleaningset %>% sapply( function(x) sum(is.na(x)))
+# cleaningset  %>% count(`Size (30kg boxes)`) %>% arrange(desc(n))
+# corrplot::corrplot(corre, method="circle")
+cleaningset[cleaningset$City=="Cristina",]
+
+cleaningset <- cleaningset %>% clean_names()
+
+
+
+### Remove national winners
+cleaningset<- cleaningset %>%  filter(!is.na(rank))
+
+
+
+cleaningset[is.na(cleaningset$rank),] %>% count(program,score)
+
+
+vis_miss(cleaningset %>% arrange(desc(program)))
+vis_dat(cleaningset %>% arrange(desc(program)))
+cleaningset$program <- cleaningset$program %>% trimws(which="both") %>% str_remove_all("[^a-zA-Z0-9 ]") %>% str_replace_all("  "," ")
+cleaningset$rank <- cleaningset$rank %>% trimws(which="both") %>% str_extract("\\d+[a-zA-Z]?")
+cleaningset<- cleaningset %>% unite(matchID,c(program,rank),remove = FALSE)
+
+cleaningset %>% arrange(desc(program))
+
+
+
+save(cleaningset,file="Scraped_data_semicleaned.Rdata")
+```
+
+```{r prep_givendata}
+data2<-read.csv("givendata2.csv", na.strings=c(""))
+
+
+
+
+
+data2 <- data2[rowSums(is.na(data2)) != ncol(data2),] %>% clean_names()
+
+
+data2[data2$program=="Brazil Naturals 2015",]$program<-paste(data2[data2$program=="Brazil Naturals 2015",]$program,data2[data2$program=="Brazil Naturals 2015",]$month)
+data2 <-data2 %>%  select(-month)
+data2$program <- data2$program %>% trimws(which="both") %>% str_remove_all("[^a-zA-Z0-9 ]") %>% str_replace_all("  "," ")
+data2$rank <- data2$rank %>% trimws(which="both") %>% str_extract("\\d+[a-zA-Z]?")
+data2<- data2 %>% unite(matchID,c(program,rank),remove = FALSE)
+
+
+
+
+
+
+data2$high_bid<-as.numeric(gsub('[$,]', '', data2$high_bid))
+data2$total_value <- as.numeric(gsub('[$,]', '', data2$total_value))
+
+
+```
+
+```{r join}
+joined <- coalesce_join(data2,cleaningset,by='matchID')
+
+save(joined, file="joineddata.Rdata")
+write.csv(joined,"joineddata.csv")
+
+
+
+
+
+
+
+joined <- joined %>% mutate(na=(!is.na(high_bid) & high_bid!=0 & (!is.na(aroma_flavor) | !is.na(acidity) | !is.na(other) | !is.na(coffee_characteristics))))
+joined$na <- as.numeric(joined$na)
+
+joined$score <- ifelse(joined$score==-1,NA,joined$score)
+
+
+
+
+
+joined$kilos <- as.numeric(joined$kilos)
+joined$size_30kg_boxes <- ifelse(is.na(joined$size_30kg_boxes),ifelse(is.na(joined$kilos),NA,floor(joined$kilos/30)),joined$size_30kg_boxes)
+
+
+joined$auction_lot_size_kg <- str_replace(joined$auction_lot_size_kg,",",  "")
+joined$auction_lot_size_kg <- as.numeric(joined$auction_lot_size_kg)
+joined$size_30kg_boxes <- ifelse(is.na(joined$size_30kg_boxes),ifelse(is.na(joined$auction_lot_size_kg),NA,floor(joined$auction_lot_size_kg/30)),joined$size_30kg_boxes)
+
+
+
+
+joined$auction_lot_size_lbs <- as.numeric(joined$auction_lot_size_lbs)
+joined$size_30kg_boxes <- ifelse(is.na(joined$size_30kg_boxes),ifelse(is.na(joined$auction_lot_size_lbs),NA,floor(joined$auction_lot_size_lbs*0.45359237/30)),joined$size_30kg_boxes)
+
+
+
+joined<- joined %>% select(-c(kilos,auction_lot_size_kg,auction_lot_size_lbs))
+
+joined$size <- as.numeric(str_replace(joined$size,"\\s\\(.+\\)\\s?",""))
+
+# Number of 30kg boxes implied by auction value
+joined <- joined %>% mutate(impliedsize=round(total_value*0.45359237/(30*high_bid)))
+
+#manual changes based on data exploration
+joined[joined$matchID=="Honduras 2014_5","altitude"] <- 1600
+joined[joined$matchID=="Honduras 2014_5","certifications"] <- NA
+joined[joined$matchID=="Honduras 2015_16b"&joined$total_value==9761.4,"rank"]<-"16c" 
+joined[joined$matchID=="Honduras 2015_16b"&joined$total_value==9761.4,"matchID"]<-"Hunduras 2015_16c" 
+joined[joined$matchID=="Costa Rica 2014_10b"&joined$farm_name=="La Entrada ","matchID"]<-"Costa Rica 2014_10c"
+joined[joined$matchID=="Costa Rica 2014_10b"&joined$farm_name=="La Entrada ","rank"]<-"10c"
+joined[joined$matchID=="Rwanda 2015_10b"&joined$high_bid==5.80,"rank"]<-"10c"
+joined[joined$matchID=="Rwanda 2015_10b"&joined$high_bid==5.80,"matchID"]<-"Rwanda 2015_10c"
+joined[joined$program=="Colombia South 2014"&joined$farm_name=="Las Margaritas","rank"]<-"9"
+
+ncoff<-count(joined,program)
+names(ncoff) <- c("program","ncoff")
+joined<- left_join(joined,ncoff,by="program")
+joined <- joined %>% filter(ncoff>1)
+
+
+repl_alt <- joined %>% pull(altitude) %>%  na_if("-") %>% na_if("-1") %>% na_if("–") %>%  str_remove_all("[\\s\\.a-zA-Z]+$") %>% str_replace(" to ", "-") %>% str_remove_all("(?<=\\d,?\\d{2,3}\\.)\\d{1,2}") %>% str_remove_all("[.,\\sa-zA-Z]") %>% str_remove_all("[^\\d-]") %>% str_replace("(?<=[1-9]{2}00)(0+)", "")
+repl_alt <- ifelse(str_detect(repl_alt,"-"), repl_alt %>%  str_split("-") %>% do.call(rbind, .) %>% as.data.frame() %>% mutate(meanalt=(as.numeric(V1)+as.numeric(V2))/2) %>% pull(meanalt),repl_alt)
+repl_alt <- ifelse(str_detect(repl_alt,"\\d{8}"),(as.numeric(substring(repl_alt,1,4)) +
+                   as.numeric(substring(repl_alt,5)))/2, repl_alt)
+repl_alt <- ifelse(str_detect(repl_alt,"\\d{6}"),(as.numeric(substring(repl_alt,1,3)) +
+                   as.numeric(substring(repl_alt,4)))/2, repl_alt) %>% as.numeric()
+#Try extracting missing altitudes from farm stories
+ext_alt<-joined %>% pull(farm_story) %>% str_extract("(\\d{4})(?=\\s?m?e?t?f?e?e?t?a?)") %>% as.numeric()
+#To avoid confusing with dates
+ext_alt<- ifelse(ext_alt<1900|ext_alt>2020,ext_alt,NA)
+repl_alt<-ifelse(is.na(repl_alt)&!is.na(ext_alt),ext_alt,repl_alt)
+
+#Some altitudes are in ft, these need to be scaled back down
+repl_alt <- ifelse(str_detect(joined$altitude,"fa|feet|ft|f.a")|repl_alt>3000,repl_alt*0.3048,repl_alt)
+
+joined$altitude <- repl_alt
+joined["fin_size"] <- ifelse(!is.na(joined$size),joined$size,joined$size_30kg_boxes)
+
+
+trimmed <- joined %>%  unique() %>% filter(na==TRUE)
+
+trimmed["fin_size"] <- ifelse(!is.na(trimmed$size),trimmed$size,trimmed$size_30kg_boxes)
+
+ggplot(trimmed,aes(high_bid)) + geom_histogram(bins = 100)
+
+ggplot(trimmed %>% filter(high_bid<50) %>%  mutate(diff=size),aes(diff)) + geom_histogram()
+```
+
+```{r extract_descriptors}
+
+  
+  
+  
+  
+unpacked1 <- trimmed %>%  pull(aroma_flavor) %>% str_remove_all(regex("aromas?\\b",ignore_case = TRUE)) %>% str_remove_all(regex("flavou?rs?",ignore_case = TRUE)) %>% str_remove_all("name/i") %>%  str_replace_all("[^a-zA-Z\\s\n]+", ";") %>% str_remove_all("^\\s?;\\s?") %>% str_remove_all(";?\\s*\n*$") %>% str_replace_all("\\s*;?\\s*;+\\s*;?\\s*", ";") %>% str_replace_all("^\\s?", ";") %>%   str_split(";")
+
+
+unpacked2 <- trimmed %>%  pull(acidity) %>% str_remove_all(regex("aromas?",ignore_case = TRUE)) %>% str_remove_all(regex("flavou?rs?",ignore_case = TRUE)) %>% str_remove_all("name/i") %>%  str_replace_all("[^a-zA-Z\\s\n]+", ";") %>% str_remove_all("^\\s?;\\s?") %>% str_remove_all(";?\\s*\n*$") %>% str_replace_all("\\s*;?\\s*;+\\s*;?\\s*", ";")  %>% str_replace_all("^\\s?", ";") %>%   str_split(";")
+
+
+unpacked3 <- trimmed %>%  pull(other) %>% str_remove_all(regex("aromas?",ignore_case = TRUE)) %>% str_remove_all(regex("flavou?rs?",ignore_case = TRUE)) %>% str_remove_all("name/i") %>%  str_replace_all("[^a-zA-Z\\s\n]+", ";") %>% str_remove_all("^\\s?;\\s?") %>% str_remove_all(";?\\s*\n*$") %>% str_replace_all("\\s*;?\\s*;+\\s*;?\\s*", ";")  %>% str_replace_all("^\\s?", ";") %>%   str_split(";")
+
+
+unpacked4 <- trimmed %>%  pull(coffee_characteristics) %>% str_remove_all(regex("aromas?",ignore_case = TRUE)) %>% str_remove_all(regex("flavou?rs?",ignore_case = TRUE)) %>% str_remove_all("name/i") %>%  str_replace_all("[^a-zA-Z\\s\n]+", ";") %>% str_remove_all("^\\s?;\\s?") %>% str_remove_all(";?\\s*\n*$") %>% str_replace_all("\\s*;?\\s*;+\\s*;?\\s*", ";")  %>% str_replace_all("^\\s?", ";") %>%   str_split(";")
+
+
+
+unpacked <- mapply(c, unpacked1,unpacked2,unpacked3,unpacked4,SIMPLIFY = FALSE) %>% 
+  lapply(function(k) k[!(k=="")&!(is.na(k))] %>% str_replace_all(" $", "") %>% tolower() %>% str_replace_all("^and\\s", "") %>% str_replace_all("\n*\t*","")  %>% str_replace_all("^\\s", "") %>% unique())
+
+
+
+tastes <- tibble(sapply(unpacked,paste0,collapse=";"))
+names(tastes) <- "Descriptors"
+
+list_descriptors <- tibble(descriptors = do.call("c", unpacked)) %>% 
+  count(descriptors)  %>% arrange(desc(n))
+
+
+
+
+```
+
+```{r extract_certs}
+
+trimmed %>% count(certifications) %>% arrange(desc(n))
+  
+certs <- trimmed %>% pull(certifications) %>% na_if(".") %>% tolower() %>% str_split(",") %>% lapply(function(k) trimws(k) %>% str_replace("rain forest", "rainforest") %>% str_replace("organics","organic") %>% str_replace("organic for nop and us for biolatina","organic") %>% str_replace("rainforest alliance","rainforest_alliance"))
+
+
+tibble(certs = do.call("c", certs)) %>% filter(!is.na(certs)) %>% count(certs) %>% arrange(desc(n))
+tibble(certs = do.call("c", certs))
+certs <- enframe(certs) %>% unnest(value) %>%  mutate(temp = 1) %>%
+  pivot_wider(names_from = value, values_from = temp, values_fill = list(temp = 0)) %>% select(c(organic,utz,`rainforest_alliance`))
+
+certs %>% summary()
+```
+
+
+
+```{r scale&misc_changes}
+ppi <- read.csv("ppi.csv")
+names(ppi) = c("DATE","PPI")
+ppi <- ppi %>% separate(DATE, c("year","M","D")) %>% select(c(year,PPI)) %>% group_by(year) %>% summarize(PPI_mean=mean(PPI)/100)
+
+ppi
+ppi$year = as.numeric(ppi$year)
+ppi <- tibble(ppi)
+write_csv(ppi, "./Out/ppisum.csv")
+
+trimmed_ppi<- trimmed %>% left_join(ppi, by="year")
+#Scale to 2010 USD, the factor aims to convert kgs into pounds to match previous research
+trimmed_ppi <- trimmed_ppi %>% mutate(adj_high_bid=1.8975*high_bid/PPI_mean) %>% mutate(adj_tot_value = 1.8975*total_value/PPI_mean)
+trimmed_ppi %>% summary()
+
+
+trimmed %>% filter(str_detect(certifications,"1600"))
+
+
+#select columns, drop 2005-2006 (5 observations)
+fin_data <- trimmed_ppi %>% 
+  select(-c(aroma_flavor,acidity,other,coffee_characteristics,size,size_30kg_boxes,id,coffee_growing_area,na,farmerrep,farm_size,farmer_rep,farm_story, pounds, certifications, region, city,impliedsize)) %>% 
+  cbind(tastes) %>% 
+  cbind(certs) %>% 
+  filter(year>2006) %>% distinct()
+  
+
+#Impute mean of altitudes for missing altitudes
+fin_data$altitude <- ifelse(is.na(fin_data$altitude),fin_data$altitude %>% na.omit %>% mean(),fin_data$altitude)
+
+#add log price
+fin_data$lnprice <- log(fin_data$adj_high_bid)
+
+
+
+
+```
+
+
+```{r countries_varieties_processing_numberofcoffees}
+#Processing systems
+fin_data$processing_system <- ifelse(is.na(fin_data$processing_system),"Other processing", fin_data$processing_system)
+
+#Reproduce Traore vars
+proc_traore<- bind_cols(wet=ifelse(str_detect(fin_data$processing_system %>% tolower(),"(?<!semi-?\\s?)wash|wet|mechanical|(?<!semi-?\\s?)lavado|(?<!honey - )anaerobic"),1,0))
+proc_traore<- proc_traore %>% bind_cols(dry=ifelse(str_detect(fin_data$processing_system %>% tolower(),"conventional|dry|(?<!pulped\\s?)natural|sundried|sun dried|sun|organic|naural"),1,0))
+proc_traore<- proc_traore %>% bind_cols(other=ifelse((proc_traore$wet==0&proc_traore$dry==0)|str_detect(fin_data$processing_system %>% tolower(),"other|honey|semi|pulped natural"),1,0))
+
+proc_traore$dry <- ifelse(proc_traore$other==0&proc_traore$dry==1,1,0)
+proc_traore$dry <- ifelse(proc_traore$wet==0&proc_traore$dry==1,1,0)
+proc_traore$wet <- ifelse(proc_traore$other==0&proc_traore$wet==1,1,0)
+
+#Augmented set of vars
+proc_aug<- bind_cols(anaerobic=ifelse(str_detect(fin_data$processing_system %>% tolower(),"anaerobic"),1,0))
+proc_aug<- proc_aug %>% bind_cols(honey=ifelse(rowSums(proc_aug)==0&str_detect(fin_data$processing_system %>% tolower(),"honey"),1,0))
+proc_aug<- proc_aug %>% bind_cols(semi_washed=ifelse(rowSums(proc_aug)==0&str_detect(fin_data$processing_system %>% tolower(),"semi-wash|semi-?lavado"),1,0))
+proc_aug<- proc_aug %>% bind_cols(pulped_natural=ifelse(rowSums(proc_aug)==0&str_detect(fin_data$processing_system %>% tolower(),"pulped natural")|str_detect(fin_data$program %>% tolower(),"pulped naturals"),1,0))
+proc_aug<- proc_aug %>% bind_cols(wet=ifelse(rowSums(proc_aug)==0&str_detect(fin_data$processing_system %>% tolower(),"(?<!semi-?\\s?)wash|wet|mechanical|(?<!semi-?\\s?)lavado"),1,0))
+proc_aug<- proc_aug %>% bind_cols(dry=ifelse(rowSums(proc_aug)==0&str_detect(fin_data$processing_system %>% tolower(),"conventional|dry|(?<!pulped\\s?)natural|sundried|sun dried|sun|organic|naural")|str_detect(fin_data$program %>% tolower(),"(?<!pulped )naturals"),1,0))
+proc_aug <- proc_aug %>% bind_cols(unknown=ifelse(rowSums(proc_aug)==0,1,0))
+
+
+write.csv(proc_traore,"./Out/processing_traore.csv")
+write.csv(proc_aug,"./Out/processing_aug.csv")
+
+
+
+
+fin_data$variety <- ifelse(is.na(fin_data$variety),"Other variety", fin_data$variety)
+
+variety<- bind_cols(bourbon=ifelse(str_detect(fin_data$variety %>% tolower(),"bou?rb"),1,0))
+variety<- variety %>% bind_cols(catuai=ifelse(str_detect(fin_data$variety %>% tolower(),"catuai?"),1,0))
+variety<- variety %>% bind_cols(caturra=ifelse(str_detect(fin_data$variety %>% tolower(),"caturra"),1,0))
+variety<- variety %>% bind_cols(typica=ifelse(str_detect(fin_data$variety %>% tolower(),"typica"),1,0))
+variety<- variety %>% bind_cols(pacamara=ifelse(str_detect(fin_data$variety %>% tolower(),"pacamara"),1,0))
+variety<- variety %>% bind_cols(mixed=ifelse(rowSums(variety)>1|(rowSums(variety)==0&str_detect(fin_data$variety %>% tolower(),",|;|\\+|and|mix|hhybrid")),1,0))
+variety[variety$mixed==1,c("bourbon","catuai","caturra","typica","pacamara")]<-0
+variety$other <- ifelse(rowSums(variety)==0,1,0)
+
+write.csv(variety,"./Out/variety.csv")
+
+#countries
+
+fin_data[fin_data["matchID"]=="Colombia South 2014_9","country"]<-"Colombia"
+fin_data$country <- fin_data$country %>% str_remove(" Naturals| Pulped Naturals| North| South") %>% str_replace("Per.+","Peru")
+
+#ranks
+
+fin_data$rank1 <- ifelse((fin_data$rank %>% str_extract("\\d+"))==1,1,0)
+fin_data$rank2 <- ifelse((fin_data$rank %>% str_extract("\\d+"))==2,1,0)
+fin_data$rank3 <- ifelse((fin_data$rank %>% str_extract("\\d+"))==3,1,0)
+fin_data$rank4 <- ifelse((fin_data$rank %>% str_extract("\\d+"))==4,1,0)
+
+#lnsize
+fin_data$lnsize <- log(fin_data$fin_size)
+
+#scoresq
+fin_data$scoresq <- fin_data$score^2
+
+```
+
+
+```{r export}
+
+#For this block to run, files need to exist from the applylexicon.rmd script
+source(knitr::purl("applylexicon.rmd", quiet=FALSE))
+library(foreign)
+exportdat<- fin_data %>% select(-c(farm_name,variety,processing_system,Descriptors,adj_tot_value,high_bid,total_value,high_bidders,PPI_mean))
+exportdat %>% vis_dat
+traore <- exportdat %>% bind_cols(read.csv("./Out/numDesc.csv") %>% select(numDesc),read.csv("./Out/l1_scaa_max.csv") %>% select(-"X") %>% sufdf("lvl1","_"),read.csv("./Out/extras_traore_max.csv") %>% select(-"X") %>% sufdf("extras","_"),read.csv("./Out/processing_traore.csv") %>% select(-"X") %>% sufdf("proc","_"),read.csv("./Out/variety.csv") %>% select(-"X") %>% sufdf("variety","_"),read.csv("./Out/Buyers.csv") %>% select(-"X") %>% lapply(as.numeric))
+
+
+#Preparations for stata operations
+
+truncmins<- traore %>% group_by(program) %>% summarize(trunc_min=min(adj_high_bid),lntrunc_min=min(lnprice))
+
+traore<- traore %>%  left_join(truncmins, by="program")
+write.csv(traore,"./Out/data_traore.csv",row.names=FALSE)
+
+# ext_data <- exportdat %>% bind_cols(read.csv("./Out/numDesc.csv") %>% select(numDesc),read.csv("./Out/l1max.csv") %>% select(-"X") %>% sufdf("lvl1","_"),read.csv("./Out/l2max.csv") %>% select(-"X") %>% sufdf("lvl2","_"),read.csv("./Out/l3_aug_max.csv") %>% select(-"X") %>% sufdf("lvl3","_"),read.csv("./Out/extras_aug_max.csv") %>% select(-"X") %>% sufdf("extras","_"),read.csv("./Out/processing_aug.csv") %>% select(-"X") %>% sufdf("proc","_"),read.csv("./Out/variety.csv") %>% select(-"X") %>% sufdf("variety","_"),read.csv("./Out/Buyers.csv") %>% select(-"X") %>% lapply(as.numeric))
+
+ext_data_max <- exportdat %>% bind_cols(read.csv("./Out/numDesc.csv") %>% select(numDesc),read.csv("./Out/l1_scaa_max.csv") %>% select(-"X") %>% sufdf("lvl1","_"),read.csv("./Out/l2_scaa_max.csv") %>% select(-"X") %>% sufdf("lvl2","_"),read.csv("./Out/l3_scaa_max.csv") %>% select(-"X") %>% sufdf("lvl3","_"),read.csv("./Out/extras_traore_max.csv") %>% select(-"X") %>% sufdf("extras","_"),read.csv("./Out/processing_traore.csv") %>% select(-"X") %>% sufdf("proc","_"),read.csv("./Out/variety.csv") %>% select(-"X") %>% sufdf("variety","_"),read.csv("./Out/Buyers.csv") %>% select(-"X") %>% lapply(as.numeric))
+
+ext_data_sum <- exportdat %>% bind_cols(read.csv("./Out/numDesc.csv") %>% select(numDesc),read.csv("./Out/l1_scaa_sum.csv") %>% select(-"X") %>% sufdf("lvl1","_"),read.csv("./Out/l2_scaa_sum.csv") %>% select(-"X") %>% sufdf("lvl2","_"),read.csv("./Out/l3_scaa_sum.csv") %>% select(-"X") %>% sufdf("lvl3","_"),read.csv("./Out/extras_traore_sum.csv") %>% select(-"X") %>% sufdf("extras","_"),read.csv("./Out/processing_traore.csv") %>% select(-"X") %>% sufdf("proc","_"),read.csv("./Out/variety.csv") %>% select(-"X") %>% sufdf("variety","_"),read.csv("./Out/Buyers.csv") %>% select(-"X") %>% lapply(as.numeric))
+
+write.csv(ext_data_max,"./Out/data_extended_max.csv",row.names = FALSE)
+write.csv(ext_data_sum,"./Out/data_extended_sum.csv",row.names = FALSE)
+traore %>% summary
+ext_data %>% summary
+```
+
+```{r explore}
+# na only correlated with year
+
+
+
+cor_dat<-joined %>% select(c(na,year,score,high_bid,total_value,fin_size)) %>% left_join(ppi, by="year") %>% mutate(adj_high_bid=high_bid/PPI_mean)  %>% select(-c(PPI_mean,high_bid,total_value, year)) %>% filter(!is.na(score)&!is.na(adj_high_bid)&!is.na(fin_size))
+names(cor_dat) = c("NA in tasting notes","Quality score","Lot size in 30 kg boxes","Price (2010$/lb)")
+
+colors=colorRampPalette(rev(magma(10)))
+pdf(file="corrplot.pdf")
+corrplot(cor(cor_dat), method="number", type="lower",tl.srt=45, tl.col="black",col=colors(100))
+dev.off()
+
+
+
+```

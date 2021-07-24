@@ -1,0 +1,127 @@
+---
+title: "Scraper"
+author: "Zoltan Aldott"
+date: "14/10/2020"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(eval = FALSE,echo = TRUE)
+library(rvest)
+library(tidyverse)
+library(Rcrawler)
+```
+
+
+
+```{r getlist}
+#Read list of competitions
+
+url<-'https://cupofexcellence.org/bolivia-2009/'
+
+
+webpage <- read_html(url)
+
+allinks<-webpage %>% 
+  html_nodes(xpath='//ul' ) %>% 
+  html_nodes(xpath='//a') %>% 
+  html_attr(name="href")
+
+allinks<-allinks[120:288] %>% 
+  data.frame()
+names(allinks)="X1"
+allinks<-allinks %>% 
+  filter(str_detect(X1,"https")==1)
+allinks
+
+
+
+```
+
+
+
+```{r startscrape}
+
+
+scrape<-read_html(allinks[1,1])
+
+links<- scrape %>%
+ html_nodes(".in-cell-link") %>%
+ html_attr(name="href") %>%
+ data.frame() %>% 
+ distinct() %>% 
+ `[`(,1) %>% 
+ as.character()
+
+ID <- str_extract(links, "(?<=/)[8-9][0-9]-?[0-9]{0,2}-?[0-9]{0,2}(?=/)") %>% 
+  data.frame()
+names(ID)="ID"
+
+data<-ContentScraper(Url=links,CssPatterns = c("th","td"),ManyPerPattern=TRUE, asDataFrame=TRUE)
+names(data)=c("X1","X2")
+data<- ID %>% 
+ cbind(data) %>% 
+ data.frame() %>%
+ unnest(c(X1,X2)) %>%
+ pivot_wider(names_from="X1",values_from="X2")
+
+data
+
+
+
+```
+
+```{r crawlloop}
+Counter <- 0
+
+for(comp in allinks[-1,1]){
+tryCatch({
+Counter <- Counter + 1
+scrape<-read_html(comp)
+
+links<- scrape %>%
+ html_nodes(".in-cell-link") %>%
+ html_attr(name="href") %>% 
+ data.frame() %>% 
+ distinct() %>% 
+ `[`(,1) %>% 
+ as.character()
+
+if(length(links)==0) {
+  links<- scrape %>%
+   html_nodes("a") %>%
+   html_attr(name="href") %>% 
+   data.frame("link"=.) %>% 
+   filter(str_detect(link,"(?<=/)[8-9][0-9]-?[0-9]{0,2}-?[0-9]{0,2}(?=/)")) %>% 
+   distinct() %>% 
+   `[`(,1) %>% 
+   as.character()
+   if(length(links)==0) stop("empty")
+  }
+
+ID <- str_extract(links, "(?<=/)[8-9][0-9]-?[0-9]{0,2}-?[0-9]{0,2}(?=/)") %>% 
+  data.frame()
+names(ID)="ID"
+
+if(length(ID)==0) stop("empty")
+
+newdat<-ContentScraper(Url=links,CssPatterns = c("th","th+td"),ManyPerPattern=TRUE, asDataFrame=TRUE)
+names(newdat)=c("X1","X2")
+newdat<- ID %>% 
+ cbind(newdat) %>% 
+ data.frame() %>%
+ unnest(c(X1,X2)) %>%
+ pivot_wider(names_from="X1",values_from="X2")
+
+if(length(newdat)==0) stop("empty")
+data<-bind_rows(data,newdat)
+
+print(paste(comp,"Complete, ", length(links), "scraped. ", Counter, "/", (length(allinks[,1])-1), " ", (100*Counter/(length(allinks[,1])-1)), "%"))
+}, error=function(e){cat("ERROR :",conditionMessage(e), "\n@",comp)})
+}
+
+save(data, file="onlinedata.Rdata")
+write.csv(data,"onlinedata.csv")
+```

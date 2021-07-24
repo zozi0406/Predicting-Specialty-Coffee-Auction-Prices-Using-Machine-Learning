@@ -1,0 +1,326 @@
+---
+title: "Apply_lex"
+author: "Zoltan Aldott"
+date: "04/01/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(eval = FALSE,echo = TRUE)
+library(tidyverse)
+library(tictoc)
+library(qdapTools)
+
+```
+
+
+
+
+
+```{r flavourlex}
+lexdat <- fin_data
+
+#Whole block ran twice to produce the flavour wheel matching and the augmented flavour wheel matching results
+firstrun<-TRUE
+keeprun<-TRUE
+
+#~2700 sec
+tic()
+while (keeprun==TRUE)
+{
+  if (firstrun==TRUE) {
+    l3lex<- read.csv("./Lexicon/L3_mod.csv")
+    names(l3lex) <- c("l1", "l2", "l3", "matchphrase")
+    extradict <- read.csv("./Lexicon/extradict.csv")
+    names(extradict) <- c("extras", "matchphrase")
+    l2lex<- read.csv("./Lexicon/L2_mod.csv")
+    names(l2lex) <- c("l1", "l2", "matchphrase")
+    l1lex<- read.csv("./Lexicon/L1_mod.csv")
+    names(l1lex) <- c("l1", "matchphrase")
+  } else {
+    l3lex<- read.csv("./Lexicon/L3.csv")
+    names(l3lex) <- c("l1", "l2", "l3", "matchphrase")
+    extradict <- read.csv("./Lexicon/extradict_traore.csv")
+    names(extradict) <- c("extras", "matchphrase")
+    l2lex<- read.csv("./Lexicon/L2.csv")
+    names(l2lex) <- c("l1", "l2", "matchphrase")
+    l1lex<- read.csv("./Lexicon/L1.csv")
+    names(l1lex) <- c("l1", "matchphrase")
+  }
+  
+  
+  
+  MultiIDdescriptor <- function(descriptor,lexicon) {
+    matches <- data.frame(l1=character(0),l2=character(0),l3=character(0),extras=character(0))
+    for (match in lexicon$matchphrase) {
+      phrases <- str_split(match,";")
+      if (length(unlist(phrases)) > 1) {
+        for (phrase in unlist(phrases)) {
+          if (str_detect(descriptor,regex(paste("\\b", phrase, "\\b", sep = "", collapse = "|")))) {
+            matches<- matches %>% bind_rows(tibble(filter(lexicon,matchphrase==match) %>%
+                                                     select(-matchphrase)))
+            }
+        }
+      } else {
+      
+      if (str_detect(descriptor,regex(paste("\\b", unlist(phrases), "\\b", sep = "", collapse = "|")))) { 
+        matches<- matches %>% bind_rows(tibble(filter(lexicon,matchphrase==match) %>%
+                                                 select(-matchphrase)))
+        }
+      }
+    }
+    if (identical(matches,data.frame(l1=character(0),l2=character(0),l3=character(0),extras=character(0)))) {
+      return(NULL) 
+      } else {
+        return(matches)
+      }
+  }
+  
+  multicharcoffee <- function(descriptors) {
+    desclist <- str_split(descriptors,";")
+    cumulative <- data.frame(l1=character(0),l2=character(0),l3=character(0),extras=character(0))
+    for (desc in unlist(desclist)) {
+      gotone<-FALSE
+      for (lex in list(l3lex,l2lex,l1lex,extradict)) {
+        
+        result <- MultiIDdescriptor(desc, lex)
+      if (!is.null(result)) {
+       cumulative <- cumulative %>% bind_rows(cbind(result,prob=0, name=desc))
+       gotone<-TRUE
+      }
+      if (identical(extradict,lex) & gotone==FALSE) {
+        cumulative <- cumulative %>% bind_rows(data.frame(l1=NA,l2=NA,l3=NA,extras=NA,prob=1, name=desc))
+        }
+      }
+      
+    }
+    return(cumulative %>% unique())
+  }
+  
+  splittable <- function(table) {
+    
+    l1max<-table$l1 %>% mtabulate() %>% summarize_all(max) %>% as.data.frame()
+    l2max<-table$l2 %>% mtabulate() %>% summarize_all(max) %>% as.data.frame()
+    l3max<-table$l3 %>% mtabulate() %>% summarize_all(max) %>% as.data.frame()
+    extrasmax<-table$extras %>% mtabulate() %>% summarize_all(max) %>% as.data.frame()
+    l1sum<-table$l1 %>% mtabulate() %>% summarize_all(sum) %>% as.data.frame()
+    l2sum<-table$l2 %>% mtabulate() %>% summarize_all(sum) %>% as.data.frame()
+    l3sum<-table$l3 %>% mtabulate() %>% summarize_all(sum) %>% as.data.frame()
+    extrassum<-table$extras %>% mtabulate() %>% summarize_all(sum) %>% as.data.frame()
+    prob_names <- table %>% filter(prob==1) %>% pull(name) %>% paste(sep=";")
+    if (identical(character(0),prob_names)) prob_names="-"
+    prob_count <- sum(table$prob)
+    return(list(l1max,l2max,l3max,extrasmax,l1sum,l2sum,l3sum,extrassum,prob_names,prob_count))
+    
+  }
+  
+  #Roughly 15-25 min each run
+  tic()
+  tables<-sapply(lexdat$Descriptors,multicharcoffee,simplify=FALSE,USE.NAMES=TRUE)
+  toc()
+  
+  #Few minutes
+  lists<- lapply(tables,splittable)
+  
+  
+  l1_max <- data.frame()
+  l1_sum <- data.frame()
+  
+  l2_max <- data.frame()
+  l2_sum <- data.frame()
+  
+  l3_max <- data.frame()
+  l3_sum <- data.frame()
+  
+  extras_max <- data.frame()
+  extras_sum <- data.frame()
+  
+  unique_num <- data.frame(uniquenum=integer(0))
+  probs <- data.frame(prob_names=character(0),prob_count=double(0))
+  
+  for (coffee in lists) {
+    
+    l1_max<- l1_max %>%  bind_rows(coffee[1])
+    l1_sum<- l1_sum %>%  bind_rows(coffee[5])
+    
+    l2_max<- l2_max %>%  bind_rows(coffee[2])
+    l2_sum<- l2_sum %>%  bind_rows(coffee[6])
+    
+    l3_max<- l3_max %>%  bind_rows(coffee[3])
+    l3_sum<- l3_sum %>%  bind_rows(coffee[7])
+    
+    extras_max<- extras_max %>%  bind_rows(coffee[4])
+    extras_sum<- extras_sum %>%  bind_rows(coffee[8])
+    
+    uniq <- data.frame(uniquenum=coffee[10])
+    names(uniq) <- "uniquenum"
+    unique_num <- unique_num %>% bind_rows(uniq)
+    
+    probline <- data.frame(prob_names=coffee[9],prob_count=coffee[10])
+    names(probline) <- c("prob_names","prob_count")
+    probs <- probs %>% bind_rows(probline)
+  }
+  
+  l1_max[is.na(l1_max)]<-0
+  l1_sum[is.na(l1_sum)]<-0
+  
+  l2_max[is.na(l2_max)]<-0
+  l2_sum[is.na(l2_sum)]<-0
+  
+  l3_max[is.na(l3_max)]<-0
+  l3_sum[is.na(l3_sum)]<-0
+  
+  extras_max[is.na(extras_max)]<-0
+  extras_sum[is.na(extras_sum)]<-0
+  
+  if (firstrun==TRUE) {
+    write.csv(l1_max,"./Out/l1max.csv")
+    write.csv(l2_max,"./Out/l2max.csv")
+    write.csv(l3_max,"./Out/l3_aug_max.csv")
+    write.csv(extras_max,"./Out/extras_aug_max.csv")
+    
+    write.csv(l1_sum,"./Out/l1sum.csv")
+    write.csv(l2_sum,"./Out/l2sum.csv")
+    write.csv(l3_sum,"./Out/l3_aug_sum.csv")
+    write.csv(extras_sum,"./Out/extras_aug_sum.csv")
+    
+    #Run this at first run as the augmented dictionary is more likely to pick up complex descriptors
+    numDesc <- data.frame(length=integer(0))
+    altnumDesc <- data.frame(length=integer(0))
+    for (desc in lexdat$Descriptors) {
+      leng<-length(unlist(str_split(desc,";"))) %>% as.data.frame()
+      names(leng)<-"length"
+      numDesc<-numDesc %>% bind_rows(leng)
+    }
+    for (tabl in tables) {
+      leng <- data.frame(length=nrow(tabl))
+      names(leng)<- "length"
+      altnumDesc<- altnumDesc %>% bind_rows(leng)
+    }
+    names(numDesc) <- "numDesc"
+    names(altnumDesc) <- "altnumDesc"
+    names(unique_num) <- "uniqueNum"
+    numDescjoined <- cbind(numDesc,altnumDesc,unique_num)
+    write.csv(numDescjoined,"./Out/numDesc.csv")
+    
+    write.csv(probs %>% filter(prob_names!="-") %>% count(prob_names) %>% arrange(desc(n)),"./Out/Augprobs.csv")
+    firstrun <- FALSE
+  } else {
+    
+    write.csv(l2_max,"./Out/l2_scaa_max.csv")
+    write.csv(l1_max,"./Out/l1_scaa_max.csv")
+    write.csv(l2_sum,"./Out/l2_scaa_sum.csv")
+    write.csv(l1_sum,"./Out/l1_scaa_sum.csv")
+    
+    
+    write.csv(l3_max,"./Out/l3_scaa_max.csv")
+    write.csv(extras_max,"./Out/extras_traore_max.csv")
+    
+    write.csv(l3_sum,"./Out/l3_scaa_sum.csv")
+    write.csv(extras_sum,"./Out/extras_traore_sum.csv")
+    
+    write.csv(probs %>% filter(prob_names!="-") %>% count(prob_names) %>%
+                arrange(desc(n)),"./Out/Baseprobs.csv")
+    keeprun<-FALSE
+  }
+}
+toc()
+```
+
+
+```{r buyers}
+ext_helper<-lexdat %>% pull(high_bidders) %>% str_split("[,;/]+(?! Inc.)(?! Ltd.) ")  %>% enframe() %>% mutate(multiple=(lengths(value)>1))
+
+### Used to create spreadsheet for manual classification
+# ext_helper2<-ext_helper %>% filter(multiple==FALSE)
+# ext_helper2$value <- ext_helper2$value %>% as.character() %>% tolower() %>% str_remove_all("((inc\\.?)?(ltd\\.?)?(corp\\.?oration)?(llc\\.?)?)")
+# ext_counts<-ext_helper2  %>% count(value) %>% arrange(desc(n))
+# write.csv(ext_counts,"buyerlist.csv")
+
+ext_helper <- ext_helper %>% mutate(text=ifelse(lengths(value)==1,value %>% as.character %>% tolower() %>%
+                                str_remove_all("((inc\\.?)?(ltd\\.?)?(corp\\.?oration)?(llc\\.?)?)"),NA))
+
+buyclasses<-read.csv("./Lexicon/Buyer_dict.csv") %>% na_if("")
+
+names(buyclasses) <- c("asian_buyer","north_american_buyer","european_buyer","nordic_buyer","other_buyer","multiple")
+
+ext_helper["multiple"] <- ifelse(str_detect(ext_helper$text,buyclasses$multiple %>% na.omit() %>% paste(collapse="|"))|ext_helper$multiple==TRUE,TRUE,FALSE)
+
+ext_helper["asian_buyer"] <- ifelse(str_detect(ext_helper$text,buyclasses$asian_buyer %>% na.omit() %>% paste(collapse="|"))&ext_helper$multiple==FALSE,TRUE,FALSE)
+
+ext_helper["european_buyer"] <- ifelse(str_detect(ext_helper$text,buyclasses$european_buyer %>% na.omit() %>% paste(collapse="|"))&ext_helper$multiple==FALSE,TRUE,FALSE)
+
+ext_helper["north_american_buyer"] <- ifelse(str_detect(ext_helper$text,buyclasses$north_american_buyer %>% na.omit() %>% paste(collapse="|"))&ext_helper$multiple==FALSE,TRUE,FALSE)
+
+ext_helper["nordic_buyer"] <- ifelse(str_detect(ext_helper$text,buyclasses$nordic_buyer %>% na.omit() %>% paste(collapse="|"))&ext_helper$multiple==FALSE,TRUE,FALSE)
+
+ext_helper["other_buyer"] <- ifelse(str_detect(ext_helper$text,buyclasses$other_buyer %>% na.omit() %>% paste(collapse="|"))&ext_helper$multiple==FALSE,TRUE,FALSE)
+
+
+```
+
+```{r man corrections+export}
+#Few manual corrections:
+
+ext_helper[ext_helper["name"]==1845,"multiple"]<-TRUE
+ext_helper[ext_helper["name"]==1859,"multiple"]<-TRUE
+ext_helper[ext_helper["name"]==2054,"multiple"]<-TRUE
+ext_helper[ext_helper["name"]==2381,"multiple"]<-TRUE
+ext_helper[ext_helper["name"]==2497,"multiple"]<-TRUE
+
+ext_helper[ext_helper["name"]==2837,"multiple"]<-TRUE
+ext_helper[ext_helper["name"]==2851,"multiple"]<-TRUE
+
+ext_helper[ext_helper["name"]==2568,"european_buyer"]<-TRUE
+
+ext_helper[ext_helper["name"]==87,"european_buyer"]<-FALSE
+ext_helper[ext_helper["name"]==87,"asian_buyer"]<-FALSE
+ext_helper[ext_helper["name"]==87,"multiple"]<-TRUE
+
+ext_helper[ext_helper["name"]==196,"european_buyer"]<-FALSE
+
+ext_helper[ext_helper["name"]==412,"multiple"]<-TRUE
+ext_helper[ext_helper["name"]==412,"asian_buyer"]<-FALSE
+ext_helper[ext_helper["name"]==412,"european_buyer"]<-FALSE
+
+ext_helper[ext_helper["name"]==427,"multiple"]<-TRUE
+ext_helper[ext_helper["name"]==427,"asian_buyer"]<-FALSE
+ext_helper[ext_helper["name"]==427,"european_buyer"]<-FALSE
+
+ext_helper[ext_helper["name"]==785,"multiple"]<-TRUE
+ext_helper[ext_helper["name"]==785,"asian_buyer"]<-FALSE
+ext_helper[ext_helper["name"]==785,"european_buyer"]<-FALSE
+
+ext_helper[ext_helper["name"]==2613,"multiple"]<-TRUE
+ext_helper[ext_helper["name"]==2613,"asian_buyer"]<-FALSE
+ext_helper[ext_helper["name"]==2613,"european_buyer"]<-FALSE
+
+ext_helper[ext_helper["name"]==114,"north_american_buyer"]<-FALSE
+ext_helper[ext_helper["name"]==1718,"north_american_buyer"]<-FALSE
+
+ext_helper[ext_helper["name"]==1927,"north_american_buyer"]<-FALSE
+ext_helper[ext_helper["name"]==1927,"asian_buyer"]<-FALSE
+ext_helper[ext_helper["name"]==1927,"multiple"]<-TRUE
+ext_helper[ext_helper["name"]==2643,"european_buyer"]<-FALSE
+ext_helper[ext_helper["name"]==2744,"european_buyer"]<-FALSE
+
+ext_helper[ext_helper["name"]==1520,"european_buyer"]<-FALSE
+ext_helper[ext_helper["name"]==1727,"european_buyer"]<-FALSE
+ext_helper[ext_helper["name"]==1759,"european_buyer"]<-FALSE
+ext_helper[ext_helper["name"]==1764,"european_buyer"]<-FALSE
+ext_helper[ext_helper["name"]==1801,"european_buyer"]<-FALSE
+ext_helper[ext_helper["name"]==1804,"european_buyer"]<-FALSE
+ext_helper[ext_helper["name"]==1806,"european_buyer"]<-FALSE
+ext_helper[ext_helper["name"]==1843,"european_buyer"]<-FALSE
+ext_helper[ext_helper["name"]==1872,"european_buyer"]<-FALSE
+ext_helper[ext_helper["name"]==2835,"european_buyer"]<-FALSE
+
+
+#Export
+
+buyers <- ext_helper %>% select(-c(value,text,name))
+
+write.csv(buyers, "./Out/Buyers.csv")
+
+```
