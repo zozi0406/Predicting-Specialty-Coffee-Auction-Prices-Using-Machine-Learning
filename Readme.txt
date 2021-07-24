@@ -3,7 +3,7 @@ Data sources:
 As the Cup of Excellence dataset is not public, the folders have been sanitised of any intermediate results featuring it.
 The below instructions are included for illustrative purposes. 
 
-The scraper may or may not be functional depending on changes made to the ACE website. The code in its current form is not fully
+The scraper may not be functional since changes were made to the CoE website. The code in its current form is not fully
 executable, as the data files are missing.
 
 ---------------------------------------------------------------------------------------
